@@ -65,6 +65,9 @@ pub enum QueryMsg {
 
     #[returns(MajorityThreshold)]
     CurrentThreshold,
+
+    #[returns(crate::state::Poll)]
+    PollByMessage { message: Message },
 }
 
 #[cw_serde]

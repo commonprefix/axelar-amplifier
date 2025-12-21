@@ -20,6 +20,8 @@ pub enum Error {
     MessagesStatus(Vec<Message>),
     #[error("failed to query voting verifier for poll. poll_id: {0}")]
     Poll(PollId),
+    #[error("failed to query voting verifier for poll by message")]
+    Message(Message),
 }
 
 impl Error {
@@ -29,6 +31,7 @@ impl Error {
             QueryMsg::VerifierSetStatus(verifier_set) => Error::VerifierSetStatus(verifier_set),
             QueryMsg::Poll { poll_id } => Error::Poll(poll_id),
             QueryMsg::CurrentThreshold => Error::CurrentThreshold,
+            QueryMsg::PollByMessage { message } => Error::Message(message),
         }
     }
 }
