@@ -7,6 +7,7 @@ use multisig::verifier_set::VerifierSet;
 use router_api::Message;
 
 use crate::msg::{ExecuteMsg, MessageStatus, PollResponse, QueryMsg};
+use crate::state::Poll;
 
 type Result<T> = error_stack::Result<T, Error>;
 
@@ -106,6 +107,14 @@ impl Client<'_> {
 
     pub fn current_threshold(&self) -> Result<MajorityThreshold> {
         let msg = QueryMsg::CurrentThreshold;
+        self.client
+            .query(&msg)
+            .change_context_lazy(|| Error::for_query(msg))
+    }
+
+    pub fn poll_by_message(&self, message: Message) -> Result<Option<Poll>> {
+        let msg = QueryMsg::PollByMessage { message };
+
         self.client
             .query(&msg)
             .change_context_lazy(|| Error::for_query(msg))
@@ -211,6 +220,33 @@ mod test {
     }
 
     #[test]
+    fn query_poll_by_message() {
+        let (querier, _, addr) = setup();
+        let client: Client =
+            client::ContractClient::new(QuerierWrapper::new(&querier), &addr).into();
+
+        let message = Message {
+            cc_id: CrossChainId::new(
+                "eth",
+                HexTxHashAndEventIndex {
+                    tx_hash: [0; 32],
+                    event_index: 0,
+                }
+                .to_string()
+                .as_str(),
+            )
+            .unwrap(),
+            source_address: address!("0x1234"),
+            destination_address: address!("0x5678"),
+            destination_chain: chain_name!("eth"),
+            payload_hash: [0; 32],
+        };
+
+        let res = client.poll_by_message(message.clone());
+        assert!(res.is_ok());
+    }
+
+    #[test]
     fn query_verifier_set_returns_error_when_query_fails() {
         let (querier, addr) = setup_queries_to_fail();
         let client: Client =
@@ -269,6 +305,34 @@ mod test {
             client::ContractClient::new(QuerierWrapper::new(&querier), &addr).into();
         let res = client.current_threshold();
 
+        assert!(res.is_err());
+        goldie::assert!(res.unwrap_err().to_string());
+    }
+
+    #[test]
+    fn query_poll_by_message_returns_error_when_query_fails() {
+        let (querier, addr) = setup_queries_to_fail();
+        let client: Client =
+            client::ContractClient::new(QuerierWrapper::new(&querier), &addr).into();
+
+        let message = Message {
+            cc_id: CrossChainId::new(
+                "eth",
+                HexTxHashAndEventIndex {
+                    tx_hash: [0; 32],
+                    event_index: 0,
+                }
+                .to_string()
+                .as_str(),
+            )
+            .unwrap(),
+            source_address: address!("0x1234"),
+            destination_address: address!("0x5678"),
+            destination_chain: chain_name!("eth"),
+            payload_hash: [0; 32],
+        };
+
+        let res = client.poll_by_message(message.clone());
         assert!(res.is_err());
         goldie::assert!(res.unwrap_err().to_string());
     }
