@@ -117,7 +117,7 @@ mod test {
         Base58SolanaTxSignatureAndEventIndex, Base58TxDigestAndEventIndex,
         FieldElementAndEventIndex, HexTxHash, HexTxHashAndEventIndex, MessageIdFormat,
     };
-    use axelar_wasm_std::voting::Vote;
+    use axelar_wasm_std::voting::{PollId, Vote};
     use axelar_wasm_std::{
         assert_err_contains, err_contains, nonempty, MajorityThreshold, Threshold,
         VerificationStatus,
@@ -138,6 +138,7 @@ mod test {
     use crate::error::ContractError;
     use crate::events::TxEventConfirmation;
     use crate::msg::MessageStatus;
+    use crate::state::Poll;
 
     const SENDER: &str = "sender";
     const SERVICE_REGISTRY_ADDRESS: &str = "service_registry_address";
@@ -1656,5 +1657,73 @@ mod test {
             msg,
         );
         assert!(res.is_ok());
+    }
+
+    #[test]
+    fn should_query_poll_by_message_after_creating_poll() {
+        let msg_id_format = MessageIdFormat::HexTxHashAndEventIndex;
+        let verifiers = verifiers(3);
+        let mut deps = setup(verifiers.clone(), &msg_id_format);
+
+        // create test messages
+        let messages = messages(5, &msg_id_format);
+        let target_message = messages[2].clone();
+
+        // Step 1: create poll by verifying messages
+        let verify_result = execute(
+            deps.as_mut(),
+            mock_env(),
+            message_info(&cosmos_addr!(SENDER), &[]),
+            ExecuteMsg::VerifyMessages(messages.clone()),
+        );
+
+        assert!(verify_result.is_ok());
+
+        // verify that a poll was created
+        let expected_poll_id = PollId::from(1);
+
+        // Step 2: Have verifiers vote on the poll
+        let vote_msg = ExecuteMsg::Vote {
+            poll_id: expected_poll_id,
+            votes: vec![
+                Vote::SucceededOnChain,
+                Vote::SucceededOnChain,
+                Vote::SucceededOnChain,
+                Vote::SucceededOnChain,
+                Vote::SucceededOnChain,
+            ],
+        };
+
+        // First two verifiers vote (2/3 threshold)
+        for i in 0..2 {
+            let vote_result = execute(
+                deps.as_mut(),
+                mock_env(),
+                message_info(&verifiers[i].address, &[]),
+                vote_msg.clone(),
+            );
+
+            assert!(vote_result.is_ok());
+        }
+
+        // Step 3: actually query poll by the target message
+        let query_result = query(
+            deps.as_ref(),
+            mock_env(),
+            QueryMsg::PollByMessage {
+                message: target_message.clone(),
+            },
+        );
+
+        assert!(query_result.is_ok());
+        let poll = query_result.unwrap();
+        let poll: Poll = from_json(&poll).unwrap();
+
+        let weighted_poll = match poll {
+            Poll::Messages(weighted_poll) => weighted_poll,
+            _ => panic!(),
+        };
+
+        assert_eq!(weighted_poll.poll_id, expected_poll_id);
     }
 }
